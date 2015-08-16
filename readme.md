@@ -1,6 +1,6 @@
 #NYC Tax Data Notes
 
-In collaboration with @talos, we are assembling the most comprehensive property tax dataset for New York City from publicly available information sources.
+We are assembling a comprehensive property tax dataset for New York City from publicly available information sources.
 
 The city's property tax bills contain a tremendous amount of data, including how taxes are calculated for each lot and condominium unit, and what extemptions and abatements exist for each.
 
@@ -19,6 +19,8 @@ This contains raw data in a key/value schema, so one bill can produce many rows 
 
 ##Data Cleaning
 
+For this project, we'll create two tables from `rawdata.csv`.  The first, `june15bbls` will include the "top-level" data for each BBL (total tax, estimated market value, billable assessed value, etc).  `june15exab' will include the exemptions and abatements, which have a many-to-one relationship with BBLs.
+
 1) Import `rawdata.csv` into postgresql
 
 ```
@@ -35,57 +37,76 @@ CREATE TABLE rawdata
   apts text
 )
 ```
-import using pgadmin or whatever other means you prefer
+import using pgadmin>import or whatever method works for you
 
-2) Extract top-level data from the June 5th tax levy, and pivot it so that the result set includes one row per BBL.  This table will not include exemptions and abatements.
+
+2) Create `june15bbls` by pivoting the top-level data into one row per BBL.  This step includes a join with table called `condolookup`, which contains the condominium number for all condo unit and lot bbls. The addition of the condonumber will allow for aggregation of taxes paid by the units of a single condo building. (this lookup table was derived from RPAD)
 
 ```
-SELECT bbl,
+CREATE TABLE june15bbls as
+  SELECT a.bbl,
      MAX(CASE WHEN key = 'Owner name' THEN avalue END ) AS ownername,
      MAX(CASE WHEN key = 'Mailing address' THEN avalue END ) AS address,
      MAX(CASE WHEN key = 'tax class' THEN avalue END ) AS taxclass,
      MAX(CASE WHEN key = 'current tax rate' THEN avalue END ) AS taxrate,
      MAX(CASE WHEN key = 'estimated market value' THEN avalue END )::double precision AS emv,
      MAX(CASE WHEN key = 'tax before exemptions and abatements' THEN avalue END )::double precision AS tbea,
+     --billable assessed value ended up in the meta column of tbea
+     MAX(CASE WHEN key = 'tax before exemptions and abatements' THEN meta END )::double precision AS bav,
      MAX(CASE WHEN key = 'tax before abatements' THEN avalue END )::double precision AS tba,
-     MAX(CASE WHEN key = 'annual property tax' THEN avalue END )::double precision AS propertytax
-  FROM rawdata
+     MAX(CASE WHEN key = 'annual property tax' THEN avalue END )::double precision AS propertytax,
+     --join with condolookup to include condonum if the bbl is for a condo unit or lot
+     MAX(b.condono) as condonumber,
+     --make a condolot field for easy querying
+     CASE 
+      WHEN a.bbl % 10000 > 7500 AND a.bbl % 10000 < 7600 THEN 'lot' 
+      WHEN a.bbl % 10000 > 1000 AND a.bbl % 10000 < 7000 THEN 'unit'
+      ELSE null END AS condolot
+
+  FROM rawdata a
+  LEFT JOIN condolookup b ON a.bbl = b.bbl
   WHERE activitythrough = '2015-06-05'
- GROUP BY bbl
- ORDER BY bbl
+  GROUP BY a.bbl
+  ORDER BY a.bbl
 ```
-Load it into a new table, `june15all`
+
+3) Create `june15exab` table that includes one row per exemption/abatement 
 
 ```
-CREATE TABLE june15all
-(
-  bbl bigint,
-  ownername text,
-  address text,
-  taxclass text,
-  taxrate text,
-  emv double precision,
-  tbea double precision,
-  tba double precision,
-  propertytax double precision
+CREATE TABLE june15exab AS
+SELECT 
+bbl,
+CASE 
+ WHEN section = 'details-abatements' THEN 'abatement'
+ WHEN section = 'details-exemptions' THEN 'exemption'
+END AS type,
+key as detail,
+avalue as amount
+FROM rawdata 
+WHERE activitythrough = '2015-06-05'
+AND (
+    section = 'details-exemptions' OR section = 'details-abatements' 
 )
 ```
-## Some Queries
 
-Only Condominium Units
+## A Few Good Queries 
 
+Count condos vs non-condos
 ```
-SELECT * FROM june15all
-WHERE bbl % 10000 > 1000
-AND bbl % 10000 < 7501
+SELECT condo,count(*) FROM june15bbls 
+GROUP BY condo
 ```
-Only Non-Condominiums
-```
-SELECT * FROM june5all 
-WHERE bbl % 10000 < 1001
-OR bbl % 10000 > 7500
-```
-## Todo
-- Pull out exemptions and abatements from `rawdata` into their own table
+"false";847959
+"true";233665
 
-- Add Lot BBLs (parent BBLs) to all condo BBLs using the assessment roll as a lookup table.  This will allow the summation of condo unit data into a single number for the physical lot.
+Sum all annual tax by borough 
+```
+SELECT LEFT(bbl::text,1)as borough, SUM(propertytax) as totaltax
+FROM june15bbls 
+GROUP BY borough
+```
+
+Sum tax before exemptions and abatements, sum annual tax
+```
+SELECT SUM(tbea),SUM(propertytax) FROM june15bbls
+```
