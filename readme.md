@@ -60,8 +60,7 @@ CREATE TABLE june15bbls as
      --make a condolot field for easy querying
      CASE 
       WHEN a.bbl % 10000 > 7500 AND a.bbl % 10000 < 7600 THEN 'lot' 
-      WHEN a.bbl % 10000 > 1000 AND a.bbl % 10000 < 7000 THEN 'unit'
-      ELSE null END AS condolot
+      WHEN a.bbl % 10000 > 1000 AND a.bbl % 10000 < 7000 THEN 'unit' END AS condo
 
   FROM rawdata a
   LEFT JOIN condolookup b ON a.bbl = b.bbl
@@ -110,3 +109,11 @@ Sum tax before exemptions and abatements, sum annual tax
 ```
 SELECT SUM(tbea),SUM(propertytax) FROM june15bbls
 ```
+Group by exemption detail, count and sum 
+```
+SELECT detail, sum(amount::double precision),count(amount) FROM june15exab WHERE type = 'exemption' GROUP by detail ORDER BY count DESC 
+```
+There are 147 unique exemption types.  There are 42 exemption types with 10 or fewer occurances.
+There are 7 with only 1 occurrance:  indust waste facility, prof. maj lea sports, nys med care fac fin, patrol salvage, solar/wind energy, state retire system, ltd profit hsng co:l
+
+
