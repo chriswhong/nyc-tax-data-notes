@@ -80,7 +80,8 @@ CASE
  WHEN section = 'details-exemptions' THEN 'exemption'
 END AS type,
 key as detail,
-avalue as amount
+avalue as amount,
+apts as units
 FROM rawdata 
 WHERE activitythrough = '2015-06-05'
 AND (
@@ -116,4 +117,17 @@ SELECT detail, sum(amount::double precision),count(amount) FROM june15exab WHERE
 There are 147 unique exemption types.  There are 42 exemption types with 10 or fewer occurances.
 There are 7 with only 1 occurrance:  indust waste facility, prof. maj lea sports, nys med care fac fin, patrol salvage, solar/wind energy, state retire system, ltd profit hsng co:l
 
+There are only 9 abatement types: 
+"co-op/condo abatement"
+"j51 abatement"
+"residential conversion abatement"
+"solar elec generating system abate"
+"brooklyn bridge park pilot"
+"industrial & commercial abate prog"
+"lease abatement"
+"mitchell lama star benefit"
+"icip abatement"
+
+
+From the FY 2015 tax report, the total levy last year was $21670900000. From our data, the total annual tax from the bills is $21620027503, so we are off by $-50872497 ($50.8M), about .23% lower!
 
